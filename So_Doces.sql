@@ -1,4 +1,3 @@
--- Garante que tudo vai ser criado no esquema correto
 SET search_path TO public;
 
 -- ====================================================================
@@ -312,53 +311,33 @@ SELECT sp_AdicionarItemVenda(1, 3, 3, 10.00);
 SELECT id_venda, valor_total FROM vendas WHERE id_venda = 1;
 
 
--- =======================================================================================
--- UDF - calcula status de fidelidade de um cliente com base em seu histórico de compras.
--- =======================================================================================
+-- =========================================================
+-- UDF - status de fidelidade.
+-- =========================================================
 
 CREATE OR REPLACE FUNCTION fn_ClassificarCliente(
-    p_ID_Cliente INTEGER,
-    p_Data_Inicio DATE DEFAULT NULL,
-    p_Data_Fim DATE DEFAULT NULL
+    p_ID_Cliente INTEGER
 )
 RETURNS TEXT
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_Total_Gasto DECIMAL(12,2);
-    v_Qtd_Vendas  INTEGER;
+    v_Total_Gasto DECIMAL(10,2);
     v_Classificacao TEXT;
-    v_Data_Inicio DATE;
-    v_Data_Fim    DATE;
 BEGIN
-    -- validação de existência do cliente
+    -- validação de existência  
     IF NOT EXISTS (SELECT 1 FROM Clientes WHERE ID_Cliente = p_ID_Cliente) THEN
-        RAISE EXCEPTION 'Cliente com ID % não encontrado.', p_ID_Cliente
-            USING ERRCODE = 'no_data_found';
+        RETURN 'Cliente não cadastrado'; 
     END IF;
 
-    -- tratamento de parametros de data opcionais
-    v_Data_Inicio := COALESCE(p_Data_Inicio, '2000-01-01'::DATE);
-    v_Data_Fim    := COALESCE(p_Data_Fim, CURRENT_DATE);
+    -- agregação direta 
+    SELECT COALESCE(SUM(Valor_Total), 0)
+    INTO v_Total_Gasto
+    FROM Vendas
+    WHERE ID_Cliente = p_ID_Cliente;
 
-    -- validação das datas tratadas
-    IF v_Data_Inicio > v_Data_Fim THEN
-        RAISE EXCEPTION 'Data de início (%) não pode ser posterior à data de fim (%).',
-            v_Data_Inicio, v_Data_Fim
-            USING ERRCODE = 'invalid_parameter_value';
-    END IF;
-
-    -- soma dos valores de vendas do cliente no período
-    SELECT COALESCE(SUM(v.Valor_Total), 0), COUNT(*)
-    INTO v_Total_Gasto, v_Qtd_Vendas
-    FROM Vendas v
-    WHERE v.ID_Cliente = p_ID_Cliente
-      AND v.Data_Hora::DATE BETWEEN v_Data_Inicio AND v_Data_Fim;
-
-    -- regras de classificação
-    IF v_Qtd_Vendas = 0 THEN
-        v_Classificacao := 'Sem Histórico';
-    ELSIF v_Total_Gasto >= 50 THEN
+    -- regras de classificação 
+    IF v_Total_Gasto >= 50 THEN
         v_Classificacao := 'Platina';
     ELSIF v_Total_Gasto >= 20 THEN
         v_Classificacao := 'Ouro';
@@ -368,8 +347,7 @@ BEGIN
         v_Classificacao := 'Bronze';
     END IF;
 
-    -- retorna classificação com a formatação monetária padrão PT-BR
-    RETURN v_Classificacao || ' (Total gasto: R$ ' || TO_CHAR(v_Total_Gasto, 'FM999G999D00') || ')';
+    RETURN v_Classificacao;
 END;
 $$;
 
