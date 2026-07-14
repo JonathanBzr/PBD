@@ -1,8 +1,5 @@
--- ====================================================================
--- INSTRUÇÕES DE EXECUÇÃO:
--- 1. Crie o banco de dados: CREATE DATABASE "So_Doces";
--- 2. Conecte-se ao banco "So_Doces" antes de rodar este script.
--- ====================================================================
+-- Garante que tudo vai ser criado no esquema correto
+SET search_path TO public;
 
 -- ====================================================================
 -- ESTRUTURA DAS TABELAS (DDL)
@@ -119,7 +116,7 @@ INSERT INTO Formas_Pagamento (ID_Forma_Pagto, Descricao) VALUES
 (4, 'Pix');
 
 -- ====================================================================
--- 1. CADASTRO DE PRODUTOS E ENTRADA DE LOTES (Validade: 01/08/2026)
+-- 1. CADASTRO DE PRODUTOS E ENTRADA DE LOTES
 -- ====================================================================
 
 INSERT INTO Produtos (ID_Produto, Nome, Codigo_Barras, Preco_Venda, Categoria) VALUES
@@ -136,7 +133,7 @@ INSERT INTO Lotes (ID_Lote, ID_Produto, Codigo_Lote, Data_Validade, Quantidade_I
 
 
 -- ====================================================================
--- 2. CADASTRO DA EQUIPE (A Gerente e os Operadores de Caixa)
+-- 2. CADASTRO DA EQUIPE
 -- ====================================================================
 
 INSERT INTO Funcionarios (ID_Funcionario, Nome, Login, Senha, ID_Cargo) VALUES
@@ -147,7 +144,7 @@ INSERT INTO Funcionarios (ID_Funcionario, Nome, Login, Senha, ID_Cargo) VALUES
 
 
 -- ====================================================================
--- 3. CADASTRO DE 27 CLIENTES ALEATÓRIOS (Para o fluxo de vendas)
+-- 3. CADASTRO DE CLIENTES
 -- ====================================================================
 
 INSERT INTO Clientes (ID_Cliente, Nome, CPF, Telefone) VALUES
@@ -209,7 +206,7 @@ INSERT INTO Itens_Venda (ID_Venda, ID_Lote, Quantidade, Preco_Praticado) VALUES
 
 
 -- ====================================================================
--- 5. REGISTRO DE QUEBRAS E AVARIAS (Registrado pela Gerente Sofia - ID 1)
+-- 5. REGISTRO DE QUEBRAS E AVARIAS
 -- ====================================================================
 
 INSERT INTO Perdas_Estoque (ID_Lote, ID_Funcionario, Quantidade, Motivo) VALUES
@@ -218,7 +215,7 @@ INSERT INTO Perdas_Estoque (ID_Lote, ID_Funcionario, Quantidade, Motivo) VALUES
 
 
 -- ====================================================================
--- SINCRONIZAÇÃO DAS SEQUÊNCIAS (Fundamental no PostgreSQL)
+-- SINCRONIZAÇÃO DAS SEQUÊNCIAS
 -- ====================================================================
 
 SELECT setval(pg_get_serial_sequence('cargos', 'id_cargo'), COALESCE(max(id_cargo), 1)) FROM cargos;
@@ -233,7 +230,7 @@ SELECT setval(pg_get_serial_sequence('perdas_estoque', 'id_perda'), COALESCE(max
 
 
 -- ====================================================================
--- STORED FUNCTIONS (Conversão das Procedures do MariaDB)
+-- STORED FUNCTIONS
 -- ====================================================================
 
 -- Function 1: sp_RegistrarPerdaEstoque
@@ -249,28 +246,27 @@ AS $$
 DECLARE
     v_qtd_atual INT;
 BEGIN
-    -- Verifica a quantidade atual disponível no lote
     SELECT Quantidade_Atual INTO v_qtd_atual
     FROM Lotes WHERE ID_Lote = p_ID_Lote;
 
     IF v_qtd_atual >= p_Quantidade THEN
-        -- 1. Registra o histórico da perda
         INSERT INTO Perdas_Estoque (ID_Lote, ID_Funcionario, Quantidade, Motivo)
         VALUES (p_ID_Lote, p_ID_Funcionario, p_Quantidade, p_Motivo);
 
-        -- 2. Deduz a quantidade do estoque atual
         UPDATE Lotes
         SET Quantidade_Atual = Quantidade_Atual - p_Quantidade
         WHERE ID_Lote = p_ID_Lote;
         
-        -- Confirmação de sucesso
         RETURN 'Perda registrada e estoque atualizado com sucesso!';
     ELSE
-        -- Retorna uma mensagem de aviso caso não tenha estoque
         RETURN 'Erro: A quantidade informada é maior que o estoque atual do lote.';
     END IF;
 END;
 $$;
+
+SELECT sp_RegistrarPerdaEstoque(2, 1, 5, 'Avaria');
+
+SELECT id_lote, codigo_lote, quantidade_atual FROM lotes WHERE id_lote = 2;
 
 
 -- Function 2: sp_AdicionarItemVenda
@@ -310,3 +306,11 @@ BEGIN
     END IF;
 END;
 $$;
+
+SELECT sp_AdicionarItemVenda(1, 3, 3, 10.00);
+
+SELECT id_venda, valor_total FROM vendas WHERE id_venda = 1;
+
+
+
+
