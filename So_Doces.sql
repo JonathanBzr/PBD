@@ -77,7 +77,7 @@ CREATE TABLE Itens_Venda (
     ID_Lote INT NOT NULL,
     Quantidade INT NOT NULL,
     Preco_Praticado DECIMAL(10, 2) NOT NULL,
-    CONSTRAINT FK_Itens_Venda_Vendas 
+    CONSTRAINT FK_Inter_Venda_Vendas 
     	FOREIGN KEY (ID_Venda) 
     	REFERENCES Vendas(ID_Venda) 
     	ON DELETE CASCADE,
@@ -230,7 +230,7 @@ SELECT setval(pg_get_serial_sequence('perdas_estoque', 'id_perda'), COALESCE(max
 
 
 -- ====================================================================
--- STORED FUNCTIONS
+-- STORED FUNCTIONS (PROCEDURES DO SISTEMA)
 -- ====================================================================
 
 -- Function 1: sp_RegistrarPerdaEstoque
@@ -257,7 +257,7 @@ BEGIN
         SET Quantidade_Atual = Quantidade_Atual - p_Quantidade
         WHERE ID_Lote = p_ID_Lote;
         
-        RETURN 'Perda registrada e estoque atualizado com sucesso!';
+        RETURN 'Perda registrada e estoque updated com sucesso!';
     ELSE
         RETURN 'Erro: A quantidade informada é maior que o estoque atual do lote.';
     END IF;
@@ -312,5 +312,65 @@ SELECT sp_AdicionarItemVenda(1, 3, 3, 10.00);
 SELECT id_venda, valor_total FROM vendas WHERE id_venda = 1;
 
 
+-- =======================================================================================
+-- UDF - calcula status de fidelidade de um cliente com base em seu histórico de compras.
+-- =======================================================================================
+
+CREATE OR REPLACE FUNCTION fn_ClassificarCliente(
+    p_ID_Cliente INTEGER,
+    p_Data_Inicio DATE DEFAULT NULL,
+    p_Data_Fim DATE DEFAULT NULL
+)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_Total_Gasto DECIMAL(12,2);
+    v_Qtd_Vendas  INTEGER;
+    v_Classificacao TEXT;
+    v_Data_Inicio DATE;
+    v_Data_Fim    DATE;
+BEGIN
+    -- validação de existência do cliente
+    IF NOT EXISTS (SELECT 1 FROM Clientes WHERE ID_Cliente = p_ID_Cliente) THEN
+        RAISE EXCEPTION 'Cliente com ID % não encontrado.', p_ID_Cliente
+            USING ERRCODE = 'no_data_found';
+    END IF;
+
+    -- tratamento de parametros de data opcionais
+    v_Data_Inicio := COALESCE(p_Data_Inicio, '2000-01-01'::DATE);
+    v_Data_Fim    := COALESCE(p_Data_Fim, CURRENT_DATE);
+
+    -- validação das datas tratadas
+    IF v_Data_Inicio > v_Data_Fim THEN
+        RAISE EXCEPTION 'Data de início (%) não pode ser posterior à data de fim (%).',
+            v_Data_Inicio, v_Data_Fim
+            USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+
+    -- soma dos valores de vendas do cliente no período
+    SELECT COALESCE(SUM(v.Valor_Total), 0), COUNT(*)
+    INTO v_Total_Gasto, v_Qtd_Vendas
+    FROM Vendas v
+    WHERE v.ID_Cliente = p_ID_Cliente
+      AND v.Data_Hora::DATE BETWEEN v_Data_Inicio AND v_Data_Fim;
+
+    -- regras de classificação
+    IF v_Qtd_Vendas = 0 THEN
+        v_Classificacao := 'Sem Histórico';
+    ELSIF v_Total_Gasto >= 50 THEN
+        v_Classificacao := 'Platina';
+    ELSIF v_Total_Gasto >= 20 THEN
+        v_Classificacao := 'Ouro';
+    ELSIF v_Total_Gasto >= 15 THEN
+        v_Classificacao := 'Prata';
+    ELSE
+        v_Classificacao := 'Bronze';
+    END IF;
+
+    -- retorna classificação com a formatação monetária padrão PT-BR
+    RETURN v_Classificacao || ' (Total gasto: R$ ' || TO_CHAR(v_Total_Gasto, 'FM999G999D00') || ')';
+END;
+$$;
 
 
