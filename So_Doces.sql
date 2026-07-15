@@ -351,4 +351,45 @@ BEGIN
 END;
 $$;
 
+-- ====================================================================
+-- GATILHO: Bloqueio de Venda Sem Estoque
+-- ====================================================================
+
+-- 1. Criação da Função do Gatilho
+CREATE OR REPLACE FUNCTION fn_alerta_zero()
+RETURNS TRIGGER AS $$
+DECLARE
+   MSG_Alerta VARCHAR(150);
+   Nome_Produto VARCHAR(50);
+BEGIN
+   -- Verifica se há uma tentativa de saída e se ela excede o estoque disponível
+   IF NEW.Quantidade_Atual < OLD.Quantidade_Atual AND NEW.Quantidade_Atual < 0 THEN
+      SELECT Nome INTO Nome_Produto
+      FROM Produtos
+      WHERE ID_Produto = NEW.ID_Produto;
+   
+      MSG_Alerta := CONCAT('BLOQUEIO DE SEGURANÇA: Não foi possível realizar a venda de (', Nome_Produto, '). Estoque insuficiente.');
+      
+      -- Aborta a transação e envia o erro personalizado para a aplicação
+      RAISE EXCEPTION '%', MSG_Alerta USING ERRCODE = '45000';
+   END IF;
+
+   RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 2. Garantia de idempotência (evita erro de duplicidade ao reexecutar o script)
+DROP TRIGGER IF EXISTS trg_alerta_zero ON Lotes;
+
+-- 3. Associação do Gatilho à Tabela de Lotes
+CREATE TRIGGER trg_alerta_zero
+BEFORE UPDATE ON Lotes
+FOR EACH ROW
+EXECUTE FUNCTION fn_alerta_zero();
+
+
+-- ====================================================================
+-- SCRIPT DE TESTE DO GATILHO (Para demonstração no vídeo)
+-- ====================================================================
+-- UPDATE Lotes SET Quantidade_Atual = -5 WHERE ID_Lote = 3;
 
